@@ -3,6 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='browser:o3-mini-2025-01-31',
+    name='gemini:gemini-2.0-flash-lite-preview-02-05',
     src=ai_gradio.registry,
+    coder=True
 ).launch()
