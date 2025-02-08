@@ -14,8 +14,11 @@ def get_image_base64(url: str, ext: str):
 def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
     def fn(message, history):
         inputs = preprocess(message, history)
+        # Set base URL based on model
+        base_url = "https://tdyqrdwpmmt8.cloud.snova.ai/v1/" if model_name == "DeepSeek-R1" else "https://api.sambanova.ai/v1/"
+        
         client = OpenAI(
-            base_url="https://api.sambanova.ai/v1/",
+            base_url=base_url,
             api_key=api_key,
         )
         try:
@@ -27,6 +30,8 @@ def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key
             response_text = ""
             for chunk in completion:
                 delta = chunk.choices[0].delta.content or ""
+                # Replace problematic XML tags with square brackets
+                delta = delta.replace("<think>", "[think]").replace("</think>", "[/think]")
                 response_text += delta
                 yield postprocess(response_text)
         except Exception as e:

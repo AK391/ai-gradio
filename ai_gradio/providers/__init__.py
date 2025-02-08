@@ -131,6 +131,7 @@ try:
         'Meta-Llama-3.1-8B-Instruct-Preview',
         'Meta-Llama-3.3-70B-Instruct',
         'Meta-Llama-3.2-3B-Instruct',
+        'DeepSeek-R1'
     ]})
 except ImportError:
     pass
