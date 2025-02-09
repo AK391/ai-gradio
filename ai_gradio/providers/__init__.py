@@ -492,6 +492,48 @@ try:
 except ImportError:
     pass
 
+try:
+    from .ollama_gradio import registry as ollama_registry
+    registry.update({f"ollama:{k}": ollama_registry for k in [
+        'llama2',
+        'codellama',
+        'mistral',
+        'mixtral',
+        'neural-chat',
+        'starling-lm',
+        'dolphin-mixtral',
+        'phi',
+        'phi3',
+        'phi4',
+        'qwen',
+        'gemma2',
+        'gemma2:2b',
+        'gemma2:27b',
+        'openchat',
+        'deepseek-coder',
+        'deepseek-r1',
+        'deepseek-r1:671b',
+        'stable-code',
+        'wizardcoder',
+        'nous-hermes',
+        'solar',
+        'yi',
+        'zephyr',
+        'llama3.3',
+        'llama3.2',
+        'llama3.2:1b',
+        'llama3.2-vision',
+        'llama3.2-vision:90b',
+        'llama3.1',
+        'llama3.1:405b',
+        'llama2-uncensored',
+        'llava',
+        'moondream',
+        'smollm'
+    ]})
+except ImportError:
+    pass
+
 if not registry:
     raise ImportError(
         "No providers installed. Install with either:\n"
@@ -517,6 +559,7 @@ if not registry:
         "pip install 'ai-gradio[perplexity]' for Perplexity support\n"
         "pip install 'ai-gradio[cerebras]' for Cerebras support\n"
         "pip install 'ai-gradio[replicate]' for Replicate support\n"
+        "pip install 'ai-gradio[ollama]' for Ollama support\n"
         "pip install 'ai-gradio[all]' for all providers\n"
         "pip install 'ai-gradio[swarms]' for Swarms support"
     )

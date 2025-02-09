@@ -333,6 +333,7 @@ def registry(
                     completion = client.chat.completions.create(
                         model=name,
                         messages=messages,
+                        max_tokens=1500,
                         stream=True,
                     )
                     
