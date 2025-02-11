@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-gradio"
-version = "0.2.39"
+version = "0.2.40"
 description = "A Python package for creating Gradio applications with AI models"
 authors = [
     { name = "AK", email = "ahsen.khaliq@gmail.com" }
@@ -145,6 +145,10 @@ perplexity = [
 
 replicate = [
     "replicate>=1.0.4"
+]
+
+ollama = [
+    "ollama>=0.4.7"
 ]
 
 [tool.hatch.build.targets.wheel]

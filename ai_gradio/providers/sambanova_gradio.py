@@ -313,10 +313,11 @@ def registry(
                 messages = []
                 messages.append({"role": "system", "content": setting["system"]})
                 
-                # Add history
-                for h in history:
-                    messages.append({"role": "user", "content": h[0]})
-                    messages.append({"role": "assistant", "content": h[1]})
+                # Add history only if not using DeepSeek
+                if name != "DeepSeek-R1":
+                    for h in history:
+                        messages.append({"role": "user", "content": h[0]})
+                        messages.append({"role": "assistant", "content": h[1]})
                 
                 # Add current query
                 messages.append({"role": "user", "content": query})
@@ -333,7 +334,7 @@ def registry(
                     completion = client.chat.completions.create(
                         model=name,
                         messages=messages,
-                        max_tokens=1500,
+                        max_tokens=3500,
                         stream=True,
                     )
                     
