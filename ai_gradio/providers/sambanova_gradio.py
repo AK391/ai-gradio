@@ -309,6 +309,28 @@ def registry(
                     return match.group(1).strip()
                 return text.strip()
 
+            def extract_html_code(text):
+                """Extract only the HTML code from the model's response, ignoring explanatory text"""
+                # Look for code between HTML tags
+                html_pattern = r'<html.*?>.*?</html>'
+                match = re.search(html_pattern, text, re.DOTALL)
+                if match:
+                    return match.group(0)
+                
+                # If no full HTML document, look for code blocks
+                code_pattern = r'```(?:html)?\s*(.*?)\s*```'
+                match = re.search(code_pattern, text, re.DOTALL)
+                if match:
+                    return match.group(1)
+                
+                # If still no match, try to find anything that looks like HTML
+                tag_pattern = r'<[^>]+>.*?</[^>]+>'
+                match = re.search(tag_pattern, text, re.DOTALL)
+                if match:
+                    return match.group(0)
+                
+                return text.strip()
+
             def generate_code(query, image, setting, history):
                 messages = []
                 messages.append({"role": "system", "content": setting["system"]})
@@ -345,21 +367,31 @@ def registry(
                             response_text += delta
                             # Return all 5 required outputs
                             yield (
-                                response_text,  # code_output
+                                f"```html\n{response_text}\n```",  # code_output - wrap in code block
                                 history,        # state
                                 None,          # preview
                                 gr.update(active_key="loading"),  # state_tab
                                 gr.update(open=True)  # code_drawer
                             )
                     
-                    clean_code = remove_code_block(response_text)
-                    new_history = history + [(query, response_text)]
+                    # Extract only the HTML code for preview
+                    clean_code = extract_html_code(response_text)
+                    new_history = history + [(query, f"```html\n{response_text}\n```")]
                     
-                    # Final yield with all outputs
+                    # Create preview HTML with proper encoding and sandbox
+                    preview_html = f'''
+                        <iframe 
+                            srcdoc="{clean_code.replace('"', '&quot;')}"
+                            style="width: 100%; height: 920px; border: none;"
+                            sandbox="allow-scripts allow-forms"
+                        ></iframe>
+                    '''
+                    
+                    # Final yield with all outputs and preview
                     yield (
-                        response_text,  # code_output
+                        f"```html\n{response_text}\n```",  # code_output - wrap in code block
                         new_history,    # state
-                        send_to_preview(clean_code),  # preview
+                        preview_html,   # preview
                         gr.update(active_key="render"),  # state_tab
                         gr.update(open=False)  # code_drawer
                     )
