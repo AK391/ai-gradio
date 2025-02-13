@@ -30,6 +30,12 @@ Focus on:
 - Adding appropriate styling and interactivity
 Return only the complete HTML code without any additional explanation."""
 
+# Add default settings
+DEFAULT_SETTINGS = {
+    "system": SystemPrompt,
+    "reasoning_effort": "high"  # Add default reasoning effort
+}
+
 DEMO_LIST = [
     {
         "card": {"index": 0},
@@ -291,7 +297,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
         
         with interface:
             history = gr.State([])
-            setting = gr.State({"system": SystemPrompt})
+            setting = gr.State(DEFAULT_SETTINGS)  # Use default settings
             model_name = gr.State(model)
 
             with ms.Application() as app:
@@ -331,6 +337,11 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                 antd.Divider("Settings")
                                 with antd.Flex(gap="small", wrap=True):
                                     settingPromptBtn = antd.Button("⚙️ System Prompt", type="default")
+                                    reasoningBtn = antd.Button(
+                                        "🎯 Reasoning Effort", 
+                                        type="default",
+                                        visible="o3" in model.lower()
+                                    )
                                     codeBtn = antd.Button("🧑‍💻 View Code", type="default")
                                     historyBtn = antd.Button("📜 History", type="default")
 
@@ -346,6 +357,18 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                     show_label=False,
                                     height=960,
                                     elem_classes="history_chatbot"
+                                )
+
+                            # Update Modal for reasoning effort - add value parameter
+                            with antd.Modal(open=False, title="Reasoning Effort", width="400px") as reasoning_modal:
+                                reasoningSelect = antd.Select(
+                                    options=[
+                                        {"label": "High", "value": "high"},
+                                        {"label": "Medium", "value": "medium"},
+                                        {"label": "Low", "value": "low"}
+                                    ],
+                                    default_value="high",
+                                    value="high"  # Add explicit value
                                 )
 
                         # Right Column
@@ -393,6 +416,17 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                 outputs=[history_drawer, history_output]
             )
             history_drawer.close(lambda: gr.update(open=False), outputs=[history_drawer])
+            
+            reasoningBtn.click(lambda: gr.update(open=True), outputs=[reasoning_modal])
+            reasoning_modal.ok(
+                lambda value, current_setting: (
+                    {"system": current_setting["system"], "reasoning_effort": value}, 
+                    gr.update(open=False)
+                ),
+                inputs=[reasoningSelect, setting],
+                outputs=[setting, reasoning_modal]
+            )
+            reasoning_modal.cancel(lambda: gr.update(open=False), outputs=[reasoning_modal])
             
             btn.click(
                 generate_code,
@@ -512,10 +546,10 @@ def generate_code(query, image, setting, history, model):
     }
     
     # Add specific parameters for o3 models
-    if "o3-mini" in model_to_use:
+    if "o3" in model_to_use:
         completion_params.update({
             "response_format": {"type": "text"},
-            "reasoning_effort": "high"
+            "reasoning_effort": setting.get("reasoning_effort", "high")  # Use setting from UI
         })
     
     response = client.chat.completions.create(**completion_params)
