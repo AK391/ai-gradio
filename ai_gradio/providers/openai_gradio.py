@@ -511,11 +511,11 @@ def generate_code(query, image, setting, history, model):
         "stream": True
     }
     
-    # Add specific parameters for o3-mini model
+    # Add specific parameters for o3 models
     if "o3-mini" in model_to_use:
         completion_params.update({
             "response_format": {"type": "text"},
-            "reasoning_effort": "medium"
+            "reasoning_effort": "high"
         })
     
     response = client.chat.completions.create(**completion_params)
