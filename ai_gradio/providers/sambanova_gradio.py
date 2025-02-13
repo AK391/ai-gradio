@@ -46,8 +46,8 @@ def get_image_base64(url: str, ext: str):
 def get_fn(model_name: str, preprocess: Callable, postprocess: Callable, api_key: str):
     def fn(message, history):
         inputs = preprocess(message, history)
-        # Set base URL based on model
-        base_url = "https://tdyqrdwpmmt8.cloud.snova.ai/v1/" if model_name == "DeepSeek-R1" else "https://api.sambanova.ai/v1/"
+        # Use preview endpoint for DeepSeek-R1
+        base_url = "https://preview.snova.ai/v1/" if model_name == "DeepSeek-R1" else "https://api.sambanova.ai/v1/"
         
         client = OpenAI(
             base_url=base_url,
@@ -344,8 +344,8 @@ def registry(
                 # Add current query
                 messages.append({"role": "user", "content": query})
                 
-                # Set base URL based on model
-                base_url = "https://tdyqrdwpmmt8.cloud.snova.ai/v1/" if name == "DeepSeek-R1" else "https://api.sambanova.ai/v1/"
+                # Use preview endpoint for DeepSeek-R1
+                base_url = "https://preview.snova.ai/v1/" if name == "DeepSeek-R1" else "https://api.sambanova.ai/v1/"
                 
                 client = OpenAI(
                     base_url=base_url,
