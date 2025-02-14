@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:openai/gpt-4o',
+    name='openrouter:deepseek/deepseek-r1',
     src=ai_gradio.registry,
     coder=True
 ).launch()

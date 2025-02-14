@@ -537,7 +537,11 @@ except ImportError:
 try:
     from .openrouter_gradio import registry as openrouter_registry
     registry.update({f"openrouter:{k}": openrouter_registry for k in [
-       "openai/gpt-4o"
+       "openai/gpt-4o",
+       "anthropic/claude-3.5-sonnet",
+       "google/gemini-2.0-flash-001",
+       "openai/gpt-4o-mini",
+       "deepseek/deepseek-r1"
     ]})
 except ImportError:
     pass
