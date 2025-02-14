@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='sambanova:DeepSeek-R1',
+    name='openrouter:openai/gpt-4o',
     src=ai_gradio.registry,
     coder=True
 ).launch()

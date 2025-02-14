@@ -534,6 +534,14 @@ try:
 except ImportError:
     pass
 
+try:
+    from .openrouter_gradio import registry as openrouter_registry
+    registry.update({f"openrouter:{k}": openrouter_registry for k in [
+       "openai/gpt-4o"
+    ]})
+except ImportError:
+    pass
+
 if not registry:
     raise ImportError(
         "No providers installed. Install with either:\n"
@@ -560,6 +568,7 @@ if not registry:
         "pip install 'ai-gradio[cerebras]' for Cerebras support\n"
         "pip install 'ai-gradio[replicate]' for Replicate support\n"
         "pip install 'ai-gradio[ollama]' for Ollama support\n"
+        "pip install 'ai-gradio[openrouter]' for OpenRouter support\n"
         "pip install 'ai-gradio[all]' for all providers\n"
         "pip install 'ai-gradio[swarms]' for Swarms support"
     )
