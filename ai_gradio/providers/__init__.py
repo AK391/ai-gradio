@@ -541,7 +541,12 @@ try:
        "anthropic/claude-3.5-sonnet",
        "google/gemini-2.0-flash-001",
        "openai/gpt-4o-mini",
-       "deepseek/deepseek-r1"
+       "deepseek/deepseek-r1",
+       "openai/o3-mini-high",
+       "openai/o1-mini-2024-09-12",
+       "openai/o1"
+       "mistralai/mistral-nemo",
+       "minimax/minimax-01"
     ]})
 except ImportError:
     pass

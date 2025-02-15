@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:anthropic/claude-3.5-sonnet',
+    name='openrouter:openai/o3-mini-high',
     src=ai_gradio.registry,
     coder=True
 ).launch()
