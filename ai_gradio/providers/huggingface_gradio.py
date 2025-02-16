@@ -210,7 +210,7 @@ def get_fn(api_key: str, model: str):
         response = client.chat.completions.create(
             model=model,
             messages=messages,
-            max_tokens=500,
+            max_tokens=4000,
             stream=True
         )
         
@@ -314,7 +314,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                             with antd.Flex(vertical=True, gap="middle", wrap=True):
                                 header = gr.HTML("""
                                     <div class="left_header">
-                                        <h1>OpenAI Code Generator</h1>
+                                        <h1>Hugging Face Code Generator</h1>
                                     </div>
                                 """)
                                 
@@ -493,11 +493,24 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
     return interface
 
 def remove_code_block(text):
-    pattern = r'```html\n(.+?)\n```'
+    # First try to find HTML code block
+    pattern = r'```html\n([\s\S]+?)\n```'
     match = re.search(pattern, text, re.DOTALL)
     if match:
         return match.group(1).strip()
-    return text.strip()
+    
+    # If no HTML block found, try to find any code block
+    pattern = r'```[^\n]*\n([\s\S]+?)\n```'
+    match = re.search(pattern, text, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+        
+    # If no code block found, check if the text itself is HTML
+    if text.strip().startswith('<') and text.strip().endswith('>'):
+        return text.strip()
+        
+    # If no HTML found, return empty string to prevent text display
+    return ''
 
 def send_to_preview(code):
     encoded_html = base64.b64encode(code.encode('utf-8')).decode('utf-8')
@@ -551,7 +564,7 @@ def generate_code(query, image, setting, history, model):
     completion_params = {
         "model": model_to_use,
         "messages": messages,
-        "max_tokens": 500,
+        "max_tokens": 4000,
         "stream": True
     }
     

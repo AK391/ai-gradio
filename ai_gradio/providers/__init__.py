@@ -554,6 +554,51 @@ try:
 except ImportError:
     pass
 
+try:
+    from .huggingface_gradio import registry as huggingface_registry
+    registry.update({f"huggingface:{k}": huggingface_registry for k in [
+        # Text Generation Models
+        "deepseek-ai/DeepSeek-R1",
+        "deepseek-ai/DeepSeek-V3",
+        "mistralai/Mistral-Small-24B-Instruct-2501",
+        "meta-llama/Llama-3.3-70B-Instruct",
+        "meta-llama/Llama-3.2-3B-Instruct",
+        "Qwen/Qwen2.5-Coder-32B-Instruct",
+        "deepseek-ai/DeepSeek-R1-Distill-Llama-70B",
+        "mistralai/Mistral-7B-Instruct-v0.3",
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "meta-llama/Llama-2-7b-chat-hf",
+        "Qwen/Qwen2.5-7B-Instruct",
+        "meta-llama/Meta-Llama-3-8B-Instruct",
+        "Qwen/Qwen2.5-72B-Instruct",
+        "mistralai/Mixtral-8x7B-Instruct-v0.1",
+        "meta-llama/Llama-3.2-1B-Instruct",
+        "google/gemma-2-9b-it",
+        
+        # Text-to-Image Models
+        "black-forest-labs/FLUX.1-dev",
+        "stabilityai/stable-diffusion-3.5-large",
+        "black-forest-labs/FLUX.1-schnell",
+        "stabilityai/stable-diffusion-xl-base-1.0",
+        "stabilityai/stable-diffusion-3.5-medium",
+        "stabilityai/stable-diffusion-3.5-large-turbo",
+        "ByteDance/SDXL-Lightning",
+        "ByteDance/Hyper-SD",
+        
+        # Vision Models
+        "meta-llama/Llama-3.2-11B-Vision-Instruct",
+        
+        # Audio Models
+        "openai/whisper-large-v3",
+        "Qwen/Qwen2-Audio-7B-Instruct",
+        
+        # Video Models
+        "tencent/HunyuanVideo",
+        "Lightricks/LTX-Video"
+    ]})
+except ImportError:
+    pass
+
 if not registry:
     raise ImportError(
         "No providers installed. Install with either:\n"
@@ -581,6 +626,7 @@ if not registry:
         "pip install 'ai-gradio[replicate]' for Replicate support\n"
         "pip install 'ai-gradio[ollama]' for Ollama support\n"
         "pip install 'ai-gradio[openrouter]' for OpenRouter support\n"
+        "pip install 'ai-gradio[huggingface]' for Hugging Face support\n"
         "pip install 'ai-gradio[all]' for all providers\n"
         "pip install 'ai-gradio[swarms]' for Swarms support"
     )

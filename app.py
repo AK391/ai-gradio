@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:perplexity/sonar-reasoning',
+    name='huggingface:deepseek-ai/DeepSeek-R1',
     src=ai_gradio.registry,
     coder=True
 ).launch()
