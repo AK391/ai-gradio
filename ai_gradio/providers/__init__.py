@@ -546,7 +546,10 @@ try:
        "openai/o1-mini-2024-09-12",
        "openai/o1"
        "mistralai/mistral-nemo",
-       "minimax/minimax-01"
+       "minimax/minimax-01",
+       "x-ai/grok-2-1212",
+       "perplexity/sonar-reasoning",
+       "perplexity/sonar"
     ]})
 except ImportError:
     pass

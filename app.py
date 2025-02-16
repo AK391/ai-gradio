@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:openai/o3-mini-high',
+    name='openrouter:perplexity/sonar-reasoning',
     src=ai_gradio.registry,
     coder=True
 ).launch()
