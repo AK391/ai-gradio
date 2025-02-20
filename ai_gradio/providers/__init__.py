@@ -549,7 +549,8 @@ try:
        "minimax/minimax-01",
        "x-ai/grok-2-1212",
        "perplexity/sonar-reasoning",
-       "perplexity/sonar"
+       "perplexity/sonar",
+       "perplexity/r1-1776"
     ]})
 except ImportError:
     pass

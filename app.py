@@ -3,8 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='huggingface:deepseek-ai/DeepSeek-R1',
+    name='openrouter:perplexity/r1-1776',
     src=ai_gradio.registry,
     coder=True,
-    provider="novita"
 ).launch()
