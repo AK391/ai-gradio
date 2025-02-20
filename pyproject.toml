@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ai-gradio"
-version = "0.2.46"
+version = "0.2.48"
 description = "A Python package for creating Gradio applications with AI models"
 authors = [
     { name = "AK", email = "ahsen.khaliq@gmail.com" }
@@ -153,6 +153,10 @@ ollama = [
 
 openrouter = [
     "openai>=1.58.1"
+]
+
+huggingface = [
+    "huggingface-hub>=0.29.1"
 ]
 
 [tool.hatch.build.targets.wheel]

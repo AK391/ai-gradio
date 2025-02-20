@@ -195,10 +195,10 @@ def update_chatbot(chatbot: list[dict], response):
     chatbot.append({"role": "assistant", "content": response.transcript})
     return chatbot
 
-def get_fn(api_key: str, model: str):
+def get_fn(api_key: str, model: str, provider: str = "together"):
     def chat_fn(message, history):
         client = InferenceClient(
-            provider="together",
+            provider=provider,
             api_key=api_key
         )
         messages = []
@@ -230,7 +230,7 @@ def demo_card_click(evt: gr.EventData):
     index = evt._data['component']['index']
     return DEMO_LIST[index]['description']
 
-def registry(name: str, token: str | None = None, twilio_sid: str | None = None, twilio_token: str | None = None, enable_voice: bool = False, coder: bool = False, **kwargs):
+def registry(name: str, token: str | None = None, twilio_sid: str | None = None, twilio_token: str | None = None, enable_voice: bool = False, coder: bool = False, provider: str = "together", **kwargs):
     api_key = token or os.environ.get("HF_TOKEN")
     if not api_key:
         raise ValueError("HF_TOKEN environment variable is not set.")
@@ -305,6 +305,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
             history = gr.State([])
             setting = gr.State(DEFAULT_SETTINGS)  # Use default settings
             model_name = gr.State(model)
+            provider_state = gr.State(provider)  # Add provider state
 
             with ms.Application() as app:
                 with antd.ConfigProvider():
@@ -436,7 +437,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
             
             btn.click(
                 generate_code,
-                inputs=[input, image_input, setting, history, model_name],
+                inputs=[input, image_input, setting, history, model_name, provider_state],  # Use provider_state instead of provider string
                 outputs=[code_output, history, preview, state_tab, code_drawer]
             )
             
@@ -486,7 +487,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
     else:
         # New chat interface implementation
         interface = gr.ChatInterface(
-            fn=get_fn(api_key, model),
+            fn=get_fn(api_key, model, provider),
             **kwargs
         )
 
@@ -517,14 +518,14 @@ def send_to_preview(code):
     data_uri = f"data:text/html;charset=utf-8;base64,{encoded_html}"
     return f'<iframe src="{data_uri}" width="100%" height="920px"></iframe>'
 
-def generate_code(query, image, setting, history, model):
+def generate_code(query, image, setting, history, model, provider: str = "together"):
     # Get api_key from environment
     api_key = os.environ.get("HF_TOKEN")
     if not api_key:
         raise ValueError("HF_TOKEN environment variable is not set.")
         
     client = InferenceClient(
-        provider="together",
+        provider=provider,
         api_key=api_key
     )
     messages = []

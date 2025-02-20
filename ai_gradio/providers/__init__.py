@@ -594,7 +594,8 @@ try:
         
         # Video Models
         "tencent/HunyuanVideo",
-        "Lightricks/LTX-Video"
+        "Lightricks/LTX-Video",
+        "Sao10K/L3-70B-Euryale-v2.1"
     ]})
 except ImportError:
     pass
