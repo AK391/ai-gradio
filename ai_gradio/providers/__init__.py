@@ -550,7 +550,8 @@ try:
        "x-ai/grok-2-1212",
        "perplexity/sonar-reasoning",
        "perplexity/sonar",
-       "perplexity/r1-1776"
+       "perplexity/r1-1776",
+       "anthropic/claude-3.7-sonnet"
     ]})
 except ImportError:
     pass
