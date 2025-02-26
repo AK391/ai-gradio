@@ -139,6 +139,8 @@ nvidia = [
 
 minimax = ["requests>=2.31.0"]
 
+novita = ["requests>=2.31.0"]
+
 perplexity = [
     "openai>=1.58.1"
 ]
