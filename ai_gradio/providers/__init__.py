@@ -602,6 +602,48 @@ try:
 except ImportError:
     pass
 
+try:
+    from .novita_gradio import registry as novita_registry
+    registry.update({f"novita:{k}": novita_registry for k in [
+        # Novita AI models from API
+        "deepseek/deepseek-r1",
+        "deepseek/deepseek_v3",
+        "meta-llama/llama-3.3-70b-instruct",
+        "deepseek/deepseek-r1-distill-llama-70b",
+        "meta-llama/llama-3.1-8b-instruct",
+        "meta-llama/llama-3.1-70b-instruct",
+        "mistralai/mistral-nemo",
+        "deepseek/deepseek-r1-distill-qwen-14b",
+        "deepseek/deepseek-r1-distill-qwen-32b",
+        "Sao10K/L3-8B-Stheno-v3.2",
+        "gryphe/mythomax-l2-13b",
+        "deepseek/deepseek-r1-distill-llama-8b",
+        "qwen/qwen-2.5-72b-instruct",
+        "meta-llama/llama-3-8b-instruct",
+        "microsoft/wizardlm-2-8x22b",
+        "google/gemma-2-9b-it",
+        "mistralai/mistral-7b-instruct",
+        "meta-llama/llama-3-70b-instruct",
+        "openchat/openchat-7b",
+        "nousresearch/hermes-2-pro-llama-3-8b",
+        "sao10k/l3-70b-euryale-v2.1",
+        "cognitivecomputations/dolphin-mixtral-8x22b",
+        "jondurbin/airoboros-l2-70b",
+        "nousresearch/nous-hermes-llama2-13b",
+        "teknium/openhermes-2.5-mistral-7b",
+        "sophosympatheia/midnight-rose-70b",
+        "sao10k/l3-8b-lunaris",
+        "qwen/qwen-2-vl-72b-instruct",
+        "meta-llama/llama-3.2-1b-instruct",
+        "meta-llama/llama-3.2-11b-vision-instruct",
+        "meta-llama/llama-3.2-3b-instruct",
+        "meta-llama/llama-3.1-8b-instruct-bf16",
+        "sao10k/l31-70b-euryale-v2.2",
+        "qwen/qwen-2-7b-instruct"
+    ]})
+except ImportError:
+    pass
+
 if not registry:
     raise ImportError(
         "No providers installed. Install with either:\n"
@@ -630,6 +672,7 @@ if not registry:
         "pip install 'ai-gradio[ollama]' for Ollama support\n"
         "pip install 'ai-gradio[openrouter]' for OpenRouter support\n"
         "pip install 'ai-gradio[huggingface]' for Hugging Face support\n"
+        "pip install 'ai-gradio[novita]' for Novita AI support\n"
         "pip install 'ai-gradio[all]' for all providers\n"
         "pip install 'ai-gradio[swarms]' for Swarms support"
     )
