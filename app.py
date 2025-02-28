@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:anthropic/claude-3.7-sonnet',
+    name='openrouter:openai/gpt-4.5-prview',
     src=ai_gradio.registry,
     coder=True,
 ).launch()

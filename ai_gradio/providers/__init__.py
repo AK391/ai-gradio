@@ -551,7 +551,8 @@ try:
        "perplexity/sonar-reasoning",
        "perplexity/sonar",
        "perplexity/r1-1776",
-       "anthropic/claude-3.7-sonnet"
+       "anthropic/claude-3.7-sonnet",
+       "openai/gpt-4.5-preview"
     ]})
 except ImportError:
     pass
