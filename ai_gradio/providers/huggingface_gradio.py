@@ -390,8 +390,8 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                         {"label": "Nebius", "value": "nebius"},
                                         {"label": "Novita", "value": "novita"}
                                     ],
-                                    default_value="together",
-                                    value="together"
+                                    default_value="fireworks-ai",
+                                    value="fireworks-ai"
                                 )
 
                         # Right Column
