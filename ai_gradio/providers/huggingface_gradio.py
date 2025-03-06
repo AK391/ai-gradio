@@ -349,6 +349,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                         type="default",
                                         visible="o3" in model.lower()
                                     )
+                                    providerBtn = antd.Button("🔄 Provider", type="default")
                                     codeBtn = antd.Button("🧑‍💻 View Code", type="default")
                                     historyBtn = antd.Button("📜 History", type="default")
 
@@ -376,6 +377,21 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                     ],
                                     default_value="high",
                                     value="high"  # Add explicit value
+                                )
+
+                            # Add Provider Modal
+                            with antd.Modal(open=False, title="Select Provider", width="400px") as provider_modal:
+                                providerSelect = antd.Select(
+                                    options=[
+                                        {"label": "Together", "value": "together"},
+                                        {"label": "Fireworks AI", "value": "fireworks-ai"},
+                                        {"label": "Hyperbolic", "value": "hyperbolic"},
+                                        {"label": "SambaNova", "value": "sambanova"},
+                                        {"label": "Nebius", "value": "nebius"},
+                                        {"label": "Novita", "value": "novita"}
+                                    ],
+                                    default_value="together",
+                                    value="together"
                                 )
 
                         # Right Column
@@ -434,6 +450,14 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                 outputs=[setting, reasoning_modal]
             )
             reasoning_modal.cancel(lambda: gr.update(open=False), outputs=[reasoning_modal])
+            
+            providerBtn.click(lambda: gr.update(open=True), outputs=[provider_modal])
+            provider_modal.ok(
+                lambda value: (value, gr.update(open=False)),
+                inputs=[providerSelect],
+                outputs=[provider_state, provider_modal]
+            )
+            provider_modal.cancel(lambda: gr.update(open=False), outputs=[provider_modal])
             
             btn.click(
                 generate_code,

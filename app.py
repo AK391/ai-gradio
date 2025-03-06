@@ -3,7 +3,7 @@ import ai_gradio
 
 
 gr.load(
-    name='openrouter:openai/gpt-4.5-prview',
+    name='huggingface:Qwen/QwQ-32B',
     src=ai_gradio.registry,
     coder=True,
 ).launch()

@@ -577,6 +577,7 @@ try:
         "mistralai/Mixtral-8x7B-Instruct-v0.1",
         "meta-llama/Llama-3.2-1B-Instruct",
         "google/gemma-2-9b-it",
+        "Qwen/QwQ-32B",
         
         # Text-to-Image Models
         "black-forest-labs/FLUX.1-dev",
