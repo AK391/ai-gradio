@@ -24,6 +24,7 @@ SAMPLE_RATE = 24000
 SystemPrompt = """You are an expert web developer specializing in creating clean, efficient, and modern web applications.
 Your task is to write complete, self-contained HTML files that include all necessary CSS and JavaScript.
 Focus on:
+- be concise
 - Writing clear, maintainable code
 - Following best practices
 - Creating responsive designs
@@ -390,8 +391,8 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                                         {"label": "Nebius", "value": "nebius"},
                                         {"label": "Novita", "value": "novita"}
                                     ],
-                                    default_value="fireworks-ai",
-                                    value="fireworks-ai"
+                                    default_value=provider,
+                                    value=provider
                                 )
 
                         # Right Column
