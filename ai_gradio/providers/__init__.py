@@ -57,6 +57,7 @@ except ImportError:
 try:
     from .gemini_gradio import registry as gemini_registry
     registry.update({f"gemini:{k}": gemini_registry for k in [
+        'gemini-2.5-pro-exp-03-25',
         'gemini-1.5-flash',
         'gemini-1.5-flash-8b',
         'gemini-1.5-pro',
