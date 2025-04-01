@@ -93,6 +93,28 @@ except ImportError:
     pass
 
 try:
+    print("Attempting to import CUA provider...")
+    from .cua_gradio import registry as cua_registry
+    print("CUA provider imported successfully!")
+    registry.update({f"cua:{k}": cua_registry for k in [
+        # OpenAI models for Computer-Use 
+        "gpt-4-turbo",
+        "gpt-4o",
+        "gpt-4",
+        "gpt-4.5-preview",
+        # Anthropic models for Computer-Use
+        "claude-3-5-sonnet-20240620",
+        "claude-3-7-sonnet-20250219",
+        # Standard Anthropic models that get mapped internally
+        "claude-3-opus",
+        "claude-3-5-sonnet",
+        "claude-3-7-sonnet"
+    ]})
+    print("CUA models registered:", [f"cua:{k}" for k in ["gpt-4-turbo", "gpt-4o", "gpt-4", "gpt-4.5-preview", "claude-3-5-sonnet-20240620", "claude-3-7-sonnet-20250219", "claude-3-opus", "claude-3-5-sonnet", "claude-3-7-sonnet"]])
+except ImportError as e:
+    print(f"Failed to import CUA registry: {e}")
+
+try:
     from .lumaai_gradio import registry as lumaai_registry
     registry.update({f"lumaai:{k}": lumaai_registry for k in [
         'dream-machine',
@@ -677,6 +699,7 @@ if not registry:
         "pip install 'ai-gradio[openrouter]' for OpenRouter support\n"
         "pip install 'ai-gradio[huggingface]' for Hugging Face support\n"
         "pip install 'ai-gradio[novita]' for Novita AI support\n"
+        "pip install 'ai-gradio[cua]' for Computer-Use Agent support\n"
         "pip install 'ai-gradio[all]' for all providers\n"
         "pip install 'ai-gradio[swarms]' for Swarms support"
     )
