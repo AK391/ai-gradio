@@ -67,15 +67,37 @@ if find_spec("computer") and find_spec("agent"):
     from computer import Computer
     from agent import ComputerAgent, LLM, AgentLoop, LLMProvider
     CUA_AVAILABLE = True
+    
+    # Global logging level
+    LOGGING_LEVEL = os.environ.get("CUA_LOGGING_LEVEL", "INFO")
+    import logging
+    NUMERIC_LEVEL = getattr(logging, LOGGING_LEVEL.upper(), logging.INFO)
+    
+    # Create a single global Computer instance for all tasks
+    # This avoids creating a new Computer for each session
+    GLOBAL_COMPUTER = Computer(verbosity=NUMERIC_LEVEL)
+    
+    # Create a single global ComputerAgent with default settings
+    # Parameters will be updated as needed for each request
+    GLOBAL_AGENT = ComputerAgent(
+        computer=GLOBAL_COMPUTER,
+        loop=AgentLoop.OPENAI,  # Default loop
+        model=LLM(
+            provider=LLMProvider.OPENAI,  # Default provider
+            name="computer_use_preview",  # Default model
+        ),
+        save_trajectory=True,
+        only_n_most_recent_images=3,
+        verbosity=NUMERIC_LEVEL,
+        api_key=os.environ.get("OPENAI_API_KEY", "")  # Default API key
+    )
+    
 else:
     # Provide helpful error message if libraries aren't installed
     raise ImportError(
         "The cua libraries could not be imported. Please install them with: "
         "pip install 'ai-gradio[cua]'"
     )
-
-# Store the computer instance between chat turns
-_computer_instances = {}
 
 # Map model names to specific provider model names
 MODEL_MAPPINGS = {
@@ -111,6 +133,282 @@ MODEL_MAPPINGS = {
     }
 }
 
+def get_provider_and_model(model_name: str, loop_provider: str) -> tuple:
+    """
+    Determine the provider and actual model name to use based on the input.
+    
+    Args:
+        model_name: The requested model name
+        loop_provider: The requested agent loop provider
+    
+    Returns:
+        tuple: (provider, model_name_to_use, agent_loop)
+    """
+    # Get the agent loop
+    loop_provider_map = {
+        "OPENAI": AgentLoop.OPENAI,
+        "ANTHROPIC": AgentLoop.ANTHROPIC,
+        "OMNI": AgentLoop.OMNI
+    }
+    agent_loop = loop_provider_map.get(loop_provider, AgentLoop.OPENAI)
+    
+    # Set up the provider and model based on the loop and model_name
+    if agent_loop == AgentLoop.OPENAI:
+        provider = LLMProvider.OPENAI
+        model_name_to_use = MODEL_MAPPINGS["openai"].get(model_name.lower(), MODEL_MAPPINGS["openai"]["default"])
+    elif agent_loop == AgentLoop.ANTHROPIC:
+        provider = LLMProvider.ANTHROPIC
+        model_name_to_use = MODEL_MAPPINGS["anthropic"].get(model_name.lower(), MODEL_MAPPINGS["anthropic"]["default"])
+    elif agent_loop == AgentLoop.OMNI:
+        # For OMNI, select provider based on model name
+        if "claude" in model_name.lower():
+            provider = LLMProvider.ANTHROPIC
+            model_name_to_use = MODEL_MAPPINGS["omni"].get(model_name.lower(), MODEL_MAPPINGS["omni"]["default"])
+        else:
+            provider = LLMProvider.OPENAI
+            model_name_to_use = MODEL_MAPPINGS["omni"].get(model_name.lower(), MODEL_MAPPINGS["omni"]["default"])
+    else:
+        # Default to OpenAI if unrecognized loop
+        provider = LLMProvider.OPENAI
+        model_name_to_use = MODEL_MAPPINGS["openai"]["default"]
+        agent_loop = AgentLoop.OPENAI
+    
+    return provider, model_name_to_use, agent_loop
+
+def clean_text(text: str) -> str:
+    """
+    Clean up response text by improving status pattern formatting.
+    
+    Args:
+        text: The text to clean
+    
+    Returns:
+        str: Cleaned text with better formatting for status indicators
+    """
+    if not text:
+        return ""
+    
+    # Replace awkward ". completed." with a better format
+    text = text.replace(". completed.", ". ✓")
+    text = text.replace(". completed", " ✓")
+    
+    return text
+
+def extract_synthesized_text(result: Dict[str, Any]) -> str:
+    """
+    Extract synthesized text from the agent result.
+    
+    Args:
+        result: The agent result
+    
+    Returns:
+        str: The synthesized text
+    """
+    synthesized_text = ""
+    
+    if "output" in result and result["output"]:
+        for output in result["output"]:
+            if output.get("type") == "reasoning":
+                content = output.get("content", "")
+                if content:
+                    synthesized_text += f"{content}\n"
+                    
+                # If there's a summary, use it
+                if "summary" in output and output["summary"]:
+                    for summary_item in output["summary"]:
+                        if isinstance(summary_item, dict) and summary_item.get("text"):
+                            synthesized_text += f"{summary_item['text']}\n"
+            
+            elif output.get("type") == "message":
+                # Handle message type outputs - can contain rich content
+                content = output.get("content", [])
+                
+                # Content is usually an array of content blocks
+                if isinstance(content, list):
+                    for block in content:
+                        if isinstance(block, dict) and block.get("type") == "output_text":
+                            text_value = block.get("text", "")
+                            if text_value:
+                                synthesized_text += f"{text_value}\n"
+            
+            elif output.get("type") == "computer_call":
+                action = output.get("action", {})
+                action_type = action.get("type", "unknown")
+                
+                # Create a descriptive text about the action
+                if action_type == "click":
+                    button = action.get("button", "")
+                    x = action.get("x", "")
+                    y = action.get("y", "")
+                    synthesized_text += f"Clicked {button} at position ({x}, {y}).\n"
+                elif action_type == "type":
+                    text = action.get("text", "")
+                    synthesized_text += f"Typed: {text}.\n"
+                elif action_type == "keypress":
+                    # Extract key correctly from either keys array or key field
+                    if isinstance(action.get("keys"), list):
+                        key = ", ".join(action.get("keys"))
+                    else:
+                        key = action.get("key", "")
+                    
+                    # Clean up any formatting issues
+                    if ". completed" in key:
+                        key = key.replace(". completed", "")
+                        
+                    synthesized_text += f"Pressed key: {key}\n"
+                else:
+                    synthesized_text += f"Performed {action_type} action.\n"
+    
+    return synthesized_text.strip()
+
+def extract_reasoning_details(outputs: List[Dict[str, Any]]) -> List[str]:
+    """
+    Extract reasoning details from outputs.
+    
+    Args:
+        outputs: List of output items
+    
+    Returns:
+        List of reasoning detail strings
+    """
+    reasoning_details = []
+    
+    for output in outputs:
+        if output.get("type") == "reasoning":
+            # Include full reasoning details
+            content = output.get("content", "")
+            
+            reasoning_text = f"Reasoning: {content}"
+            
+            # Add summary if available
+            if "summary" in output:
+                for summary_item in output["summary"]:
+                    if summary_item.get("type") == "summary_text":
+                        reasoning_text += f"\n↪ Summary: {summary_item.get('text', '')}"
+            
+            reasoning_details.append(reasoning_text)
+        elif output.get("type") == "message":
+            # Handle message type outputs - can contain rich content
+            content = output.get("content", [])
+            
+            # Create a message_text variable to collect message content
+            message_text = ""
+            
+            # Content is usually an array of content blocks
+            if isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict) and block.get("type") == "output_text":
+                        text_value = block.get("text", "")
+                        if text_value:
+                            message_text += f"{text_value}\n"
+            
+            # Add message to reasoning details if it has content
+            if message_text.strip():
+                reasoning_details.append(f"Message: {message_text.strip()}")
+    
+    return reasoning_details
+
+def extract_tool_call_details(outputs: List[Dict[str, Any]]) -> List[str]:
+    """
+    Extract tool call details from outputs.
+    
+    Args:
+        outputs: List of output items
+    
+    Returns:
+        List of tool call detail strings
+    """
+    tool_call_details = []
+    
+    for output in outputs:
+        if output.get("type") == "computer_call":
+            # Extract tool call details
+            tool = output.get("tool", "unknown")
+            status = output.get("status", "")
+            
+            # Build a detailed tool call description
+            tool_call_text = f"Action: {tool} (Status: {status})"
+            
+            # Add action details if available
+            if "action" in output:
+                action = output["action"]
+                action_type = action.get("type", "")
+                
+                if action_type == "click":
+                    button = action.get("button", "")
+                    x = action.get("x", "")
+                    y = action.get("y", "")
+                    tool_call_text += f"\n↪ {action_type.capitalize()} {button} at ({x}, {y})"
+                else:
+                    tool_call_text += f"\n↪ {action_type.capitalize()}: {str(action)}"
+            
+            # Add safety checks if available
+            if "pending_safety_checks" in output and output["pending_safety_checks"]:
+                tool_call_text += "\n↪ Safety Checks:"
+                for check in output["pending_safety_checks"]:
+                    check_code = check.get("code", "")
+                    check_msg = check.get("message", "").split(".")[0]  # First sentence only
+                    tool_call_text += f"\n  • {check_code}: {check_msg}"
+            
+            tool_call_details.append(tool_call_text)
+    
+    return tool_call_details
+
+def extract_usage_info(usage: Dict[str, Any]) -> List[str]:
+    """
+    Extract usage information.
+    
+    Args:
+        usage: Usage data dictionary
+    
+    Returns:
+        List of usage info strings
+    """
+    usage_info = []
+    
+    # Basic token usage
+    tokens_text = f"Tokens: {usage.get('input_tokens', 0)} in / {usage.get('output_tokens', 0)} out"
+    usage_info.append(tokens_text)
+    
+    # Add detailed token breakdowns if available
+    if "input_tokens_details" in usage:
+        input_details = usage["input_tokens_details"]
+        if isinstance(input_details, dict):
+            for key, value in input_details.items():
+                usage_info.append(f"Input {key}: {value}")
+    
+    if "output_tokens_details" in usage:
+        output_details = usage["output_tokens_details"]
+        if isinstance(output_details, dict):
+            for key, value in output_details.items():
+                usage_info.append(f"Output {key}: {value}")
+    
+    return usage_info
+
+def update_global_agent(provider, agent_loop, model_name, api_key, save_trajectory, only_n_most_recent_images):
+    """
+    Update the global agent's parameters.
+    
+    Args:
+        provider: The LLM provider
+        agent_loop: The agent loop type
+        model_name: The model name to use
+        api_key: The API key
+        save_trajectory: Whether to save the agent trajectory
+        only_n_most_recent_images: Number of most recent images to keep
+    """
+    global GLOBAL_AGENT
+    
+    # Update the agent's parameters
+    GLOBAL_AGENT.loop = agent_loop
+    GLOBAL_AGENT.model = LLM(
+        provider=provider,
+        name=model_name,
+    )
+    GLOBAL_AGENT.save_trajectory = save_trajectory
+    GLOBAL_AGENT.only_n_most_recent_images = only_n_most_recent_images
+    GLOBAL_AGENT.api_key = api_key
+
 def get_fn(
     model_name: str, 
     preprocess: Callable, 
@@ -138,222 +436,39 @@ def get_fn(
     """
     
     async def fn(message, history):
-        import logging
         inputs = preprocess(message, history)
         
         try:
-            # Determine provider and loop based on the inputs
-            loop_provider_map = {
-                "OPENAI": AgentLoop.OPENAI,
-                "ANTHROPIC": AgentLoop.ANTHROPIC,
-                "OMNI": AgentLoop.OMNI
-            }
+            # Get provider, model name, and agent loop
+            provider, model_name_to_use, agent_loop = get_provider_and_model(model_name, loop_provider)
             
-            # Get the agent loop
-            agent_loop = loop_provider_map.get(loop_provider, AgentLoop.OPENAI)
+            # Update the global agent with the current parameters
+            update_global_agent(
+                provider,
+                agent_loop,
+                model_name_to_use,
+                api_key,
+                save_trajectory,
+                only_n_most_recent_images
+            )
             
-            # Set up the provider and model based on the loop and model_name
-            if agent_loop == AgentLoop.OPENAI:
-                provider = LLMProvider.OPENAI
-                # Map the model to the correct OpenAI CUA model name
-                model_name_to_use = MODEL_MAPPINGS["openai"].get(model_name.lower(), MODEL_MAPPINGS["openai"]["default"])
-            elif agent_loop == AgentLoop.ANTHROPIC:
-                provider = LLMProvider.ANTHROPIC
-                # Map the model to the correct Anthropic CUA model name
-                model_name_to_use = MODEL_MAPPINGS["anthropic"].get(model_name.lower(), MODEL_MAPPINGS["anthropic"]["default"])
-            elif agent_loop == AgentLoop.OMNI:
-                # For OMNI, select provider based on model name
-                if "claude" in model_name.lower():
-                    provider = LLMProvider.ANTHROPIC
-                    model_name_to_use = MODEL_MAPPINGS["omni"].get(model_name.lower(), MODEL_MAPPINGS["omni"]["default"])
-                else:
-                    provider = LLMProvider.OPENAI
-                    model_name_to_use = MODEL_MAPPINGS["omni"].get(model_name.lower(), MODEL_MAPPINGS["omni"]["default"])
-            else:
-                # Default to OpenAI if unrecognized loop
-                provider = LLMProvider.OPENAI
-                model_name_to_use = MODEL_MAPPINGS["openai"]["default"]
-                agent_loop = AgentLoop.OPENAI
+            # Use the global agent
+            agent = GLOBAL_AGENT
             
-            # Let's define logging levels
-            logging_level = os.environ.get("CUA_LOGGING_LEVEL", "INFO")
-            numeric_level = getattr(logging, logging_level.upper(), logging.INFO)
+            # Process the message
+            results = []
+            async for result in agent.run(inputs["message"]):
+                results.append(result)  # Store raw results
+                yield postprocess([result])  # Process single result for streaming
             
-            # Always use multi-turn conversation, reuse computer instance if available
-            computer_key = f"{session_id}_{provider}_{model_name_to_use}"
+            yield postprocess(results)  # Process all results for final output
             
-            if computer_key in _computer_instances:
-                macos_computer = _computer_instances[computer_key]
-                agent = ComputerAgent(
-                    computer=macos_computer,
-                    loop=agent_loop,
-                    model=LLM(
-                        provider=provider,
-                        name=model_name_to_use
-                    ),
-                    save_trajectory=save_trajectory,
-                    only_n_most_recent_images=only_n_most_recent_images,
-                    verbosity=numeric_level,
-                    api_key=api_key
-                )
-                
-                # Process the message through the CUA agent
-                results = []
-                async for result in agent.run(inputs["message"]):
-                    # Process and collect detailed results
-                    processed_result = process_agent_result(result)
-                    results.append(processed_result)
-                    
-                    # Also yield intermediate results for streaming
-                    yield postprocess([processed_result])
-                
-                # Return the final output for the chatbot
-                yield postprocess(results)
-            else:
-                # Create a new computer instance for first message
-                async with Computer(verbosity=numeric_level) as macos_computer:
-                    # Store the computer instance for reuse in future messages
-                    _computer_instances[computer_key] = macos_computer
-                    
-                    agent = ComputerAgent(
-                        computer=macos_computer,
-                        loop=agent_loop,
-                        model=LLM(
-                            provider=provider,
-                            name=model_name_to_use,
-                        ),
-                        save_trajectory=save_trajectory,
-                        only_n_most_recent_images=only_n_most_recent_images,
-                        verbosity=numeric_level,
-                        api_key=api_key
-                    )
-                    
-                    # Process the message through the CUA agent
-                    results = []
-                    async for result in agent.run(inputs["message"]):
-                        # Process and collect detailed results
-                        processed_result = process_agent_result(result)
-                        results.append(processed_result)
-                        
-                        # Also yield intermediate results for streaming
-                        yield postprocess([processed_result])
-                    
-                    # Return the final output for the chatbot
-                    yield postprocess(results)
-        
         except Exception as e:
             import traceback
             traceback.print_exc()
-            error_message = f"Error: {str(e)}"
-            
-            # Clean up the computer instance in case of error
-            computer_key = f"{session_id}_{provider}_{model_name_to_use}"
-            if computer_key in _computer_instances:
-                del _computer_instances[computer_key]
-                
-            yield {"role": "assistant", "content": error_message}
+            yield {"role": "assistant", "content": f"Error: {str(e)}"}
     
     return fn
-
-def process_agent_result(result: Dict[str, Any]) -> Dict[str, Any]:
-    """Process the detailed result from the agent into a standardized format.
-    
-    The response format aligns with the OpenAI Agent SDK specification.
-    
-    Args:
-        result: The raw result from the agent
-    
-    Returns:
-        A standardized format of the result
-    """
-    processed = {}
-    
-    # Debug print the full raw result
-    print(f"DEBUG - Raw result: {type(result)}")
-    
-    # Basic information
-    processed["id"] = result.get("id", "")
-    processed["status"] = result.get("status", "")
-    processed["model"] = result.get("model", "")
-    
-    # In OpenAI's Computer-Use Agent, the text field is an object with format property
-    # But it doesn't actually contain the text content, so we need to extract it elsewhere
-    text_obj = result.get("text", {})
-    
-    # For OpenAI Computer-Use, we need to synthesize text from output
-    # Since there's often no direct text content
-    if text_obj and isinstance(text_obj, dict) and "format" in text_obj and not text_obj.get("value", ""):
-        synthesized_text = ""
-        
-        # Try to synthesize a text from output
-        if "output" in result and result["output"]:
-            for output in result["output"]:
-                if output.get("type") == "reasoning":
-                    content = output.get("content", "")
-                    if content:
-                        synthesized_text += f"{content}\n"
-                        
-                    # If there's a summary, use it
-                    if "summary" in output and output["summary"]:
-                        for summary_item in output["summary"]:
-                            if isinstance(summary_item, dict) and summary_item.get("text"):
-                                synthesized_text += f"{summary_item['text']}\n"
-                
-                elif output.get("type") == "computer_call":
-                    action = output.get("action", {})
-                    action_type = action.get("type", "unknown")
-                    status = output.get("status", "")
-                    
-                    # Create a descriptive text about the action
-                    if action_type == "click":
-                        button = action.get("button", "")
-                        x = action.get("x", "")
-                        y = action.get("y", "")
-                        synthesized_text += f"Clicked {button} at position ({x}, {y}). {status}.\n"
-                    elif action_type == "type":
-                        text = action.get("text", "")
-                        synthesized_text += f"Typed: {text}. {status}.\n"
-                    elif action_type == "keypress":
-                        key = action.get("key", "")
-                        synthesized_text += f"Pressed key: {key}. {status}.\n"
-                    else:
-                        synthesized_text += f"Performed {action_type} action. {status}.\n"
-        
-        # If we couldn't create a meaningful text, use a generic message
-        if not synthesized_text.strip():
-            synthesized_text = "Working on your task..."
-        
-        processed["text"] = synthesized_text.strip()
-    else:
-        # For other types of results, try to get text directly
-        if isinstance(text_obj, dict):
-            if "value" in text_obj:
-                processed["text"] = text_obj["value"]
-            elif "text" in text_obj:
-                processed["text"] = text_obj["text"]
-            elif "content" in text_obj:
-                processed["text"] = text_obj["content"]
-            else:
-                processed["text"] = "Working on your task..."
-        else:
-            processed["text"] = str(text_obj) if text_obj else "Working on your task..."
-    
-    # Extract usage information if available
-    if "usage" in result:
-        processed["usage"] = result["usage"]
-    
-    # Extract tool information
-    if "tools" in result:
-        processed["tools"] = result["tools"]
-    
-    # Extract outputs (reasoning, tool calls)
-    if "output" in result:
-        processed["output"] = result["output"]  # Preserve the original output structure
-    
-    # Debug the processed result
-    print(f"DEBUG - Processed text: {processed.get('text', 'No text extracted')}")
-    
-    return processed
 
 def get_interface_args(pipeline):
     if pipeline == "cua":
@@ -361,125 +476,92 @@ def get_interface_args(pipeline):
             return {"message": message}
 
         def postprocess(results):
+            """Format agent results for the Gradio UI.
+            
+            Args:
+                results: List of raw agent results
+                
+            Returns:
+                A formatted message for the Gradio chatbot
+            """
             if not results:
                 return {
                     "role": "assistant",
                     "content": "No results were returned from the computer agent."
                 }
             
-            # Get the final result
-            final_result = results[-1] if results else {}
+            # Process raw results to extract needed information
+            processed_results = []
+            
+            for result in results:
+                processed = {}
+                
+                # Basic information
+                processed["id"] = result.get("id", "")
+                processed["status"] = result.get("status", "")
+                processed["model"] = result.get("model", "")
+                
+                # Extract text content
+                text_obj = result.get("text", {})
+                
+                # For OpenAI's Computer-Use Agent, text field is an object with format property
+                if text_obj and isinstance(text_obj, dict) and "format" in text_obj and not text_obj.get("value", ""):
+                    synthesized_text = extract_synthesized_text(result)
+                    processed["text"] = synthesized_text if synthesized_text else ""
+                else:
+                    # For other types of results, try to get text directly
+                    if isinstance(text_obj, dict):
+                        if "value" in text_obj:
+                            processed["text"] = text_obj["value"]
+                        elif "text" in text_obj:
+                            processed["text"] = text_obj["text"]
+                        elif "content" in text_obj:
+                            processed["text"] = text_obj["content"]
+                        else:
+                            processed["text"] = ""
+                    else:
+                        processed["text"] = str(text_obj) if text_obj else ""
+                
+                # Clean up the text
+                processed["text"] = clean_text(processed["text"])
+                
+                # Extract detailed information
+                if "output" in result and result["output"]:
+                    output = result["output"]
+                    processed["reasoning_details"] = extract_reasoning_details(output)
+                    processed["tool_call_details"] = extract_tool_call_details(output)
+                    
+                    # If no text was found, try to generate a status message
+                    if not processed["text"]:
+                        if output and len(output) > 0:
+                            most_recent_output = output[-1]
+                            if most_recent_output.get("type") == "computer_call":
+                                action = most_recent_output.get("action", {})
+                                action_type = action.get("type", "")
+                                if action_type:
+                                    processed["text"] = f"Performing action: {action_type}"
+                
+                # Extract usage information
+                if "usage" in result:
+                    processed["usage_info"] = extract_usage_info(result["usage"])
+                
+                processed_results.append(processed)
+            
+            # Get the final result for display
+            final_result = processed_results[-1] if processed_results else {}
             
             # Extract the main text response
             main_response = final_result.get("text", "")
             
-            # If this is a partial/streaming result at the beginning (just initializing)
-            # Give a helpful status message
-            if not main_response or main_response.strip() == "":
-                if "output" in final_result and final_result["output"]:
-                    # Show what's happening based on most recent output
-                    most_recent_output = final_result["output"][-1]
-                    
-                    if most_recent_output.get("type") == "computer_call":
-                        tool = most_recent_output.get("tool", "unknown")
-                        status = most_recent_output.get("status", "")
-                        
-                        if "action" in most_recent_output:
-                            action = most_recent_output["action"]
-                            action_type = action.get("type", "")
-                            main_response = f"Performing action: {action_type} ({status})"
-                        else:
-                            main_response = f"Working on task... ({status})"
-                    
-                    elif most_recent_output.get("type") == "reasoning":
-                        main_response = "Thinking about how to approach this task..."
-                else:
-                    main_response = "Starting task execution..."
-            
             # Prepare intermediate steps if available
             steps = []
-            for i, result in enumerate(results[:-1], 1):
+            for i, result in enumerate(processed_results[:-1], 1):
                 text = result.get("text", "")
                 if isinstance(text, str) and text.strip():
                     steps.append(f"Step {i}: {text}")
             
-            # Collect any reasoning from the final result
-            reasoning_details = []
-            tool_call_details = []
-            
-            if "output" in final_result:
-                for output in final_result.get("output", []):
-                    if output.get("type") == "reasoning":
-                        # Include full reasoning details
-                        content = output.get("content", "")
-                        output_id = output.get("id", "")
-                        
-                        reasoning_text = f"Reasoning: {content}"
-                        
-                        # Add summary if available
-                        if "summary" in output:
-                            for summary_item in output["summary"]:
-                                if summary_item.get("type") == "summary_text":
-                                    reasoning_text += f"\n↪ Summary: {summary_item.get('text', '')}"
-                        
-                        reasoning_details.append(reasoning_text)
-                    
-                    elif output.get("type") == "computer_call":
-                        # Extract tool call details
-                        tool = output.get("tool", "unknown")
-                        call_id = output.get("call_id", "")
-                        status = output.get("status", "")
-                        
-                        # Build a detailed tool call description
-                        tool_call_text = f"Action: {tool} (Status: {status})"
-                        
-                        # Add action details if available
-                        if "action" in output:
-                            action = output["action"]
-                            action_type = action.get("type", "")
-                            
-                            if action_type == "click":
-                                button = action.get("button", "")
-                                x = action.get("x", "")
-                                y = action.get("y", "")
-                                tool_call_text += f"\n↪ {action_type.capitalize()} {button} at ({x}, {y})"
-                            else:
-                                tool_call_text += f"\n↪ {action_type.capitalize()}: {str(action)}"
-                        
-                        # Add safety checks if available
-                        if "pending_safety_checks" in output and output["pending_safety_checks"]:
-                            tool_call_text += "\n↪ Safety Checks:"
-                            for check in output["pending_safety_checks"]:
-                                check_code = check.get("code", "")
-                                check_msg = check.get("message", "").split(".")[0]  # First sentence only
-                                tool_call_text += f"\n  • {check_code}: {check_msg}"
-                        
-                        tool_call_details.append(tool_call_text)
-            
-            # Add usage information if available
-            usage_info = []
-            if "usage" in final_result:
-                usage = final_result["usage"]
-                
-                # Basic token usage
-                tokens_text = f"Tokens: {usage.get('input_tokens', 0)} in / {usage.get('output_tokens', 0)} out"
-                usage_info.append(tokens_text)
-                
-                # Add detailed token breakdowns if available
-                if "input_tokens_details" in usage:
-                    input_details = usage["input_tokens_details"]
-                    if isinstance(input_details, dict):
-                        for key, value in input_details.items():
-                            usage_info.append(f"Input {key}: {value}")
-                
-                if "output_tokens_details" in usage:
-                    output_details = usage["output_tokens_details"]
-                    if isinstance(output_details, dict):
-                        for key, value in output_details.items():
-                            usage_info.append(f"Output {key}: {value}")
-            
             # Is this a streaming update or final result?
-            is_streaming = len(results) == 1 and not steps
+            is_streaming = len(processed_results) == 1 and not steps
             
             # Prepare metadata for the rich response
             metadata = {}
@@ -489,6 +571,11 @@ def get_interface_args(pipeline):
             
             # Organize detailed information sections
             detailed_sections = []
+            
+            # Get information from the final result
+            reasoning_details = final_result.get("reasoning_details", [])
+            tool_call_details = final_result.get("tool_call_details", [])
+            usage_info = final_result.get("usage_info", [])
             
             if reasoning_details:
                 detailed_sections.append("🧠 Reasoning:")
@@ -536,33 +623,91 @@ def create_advanced_demo():
     if not openai_api_key and not anthropic_api_key:
         raise ValueError("Please set at least one of OPENAI_API_KEY or ANTHROPIC_API_KEY environment variables")
     
+    # Logo URLs
+    logo_black = "https://github.com/trycua/cua/blob/main/img/logo_black.png?raw=true"  # For light theme
+    logo_white = "https://github.com/trycua/cua/blob/main/img/logo_white.png?raw=true"  # For dark theme
+    
     # Create a blocks-based interface for more customization
     with gr.Blocks(title="Advanced Computer-Use Agent Demo") as demo:
         with gr.Row():
+            # Left column for settings
             with gr.Column(scale=1):
-                gr.Markdown("""
-                # 🖥️ Advanced Computer-Use Agent
+                # Add logo with HTML to support both light and dark themes
+                gr.HTML(f"""
+                <style>
+                    /* Logo display based on theme */
+                    .logo-container img.light-logo {{ display: block; }}
+                    .logo-container img.dark-logo {{ display: none; }}
+                    
+                    /* Switch logos in dark mode */
+                    @media (prefers-color-scheme: dark) {{
+                        .logo-container img.light-logo {{ display: none; }}
+                        .logo-container img.dark-logo {{ display: block; }}
+                    }}
+                    
+                    /* Dark theme support for Gradio's theme toggle */
+                    body.dark .logo-container img.light-logo {{ display: none; }}
+                    body.dark .logo-container img.dark-logo {{ display: block; }}
+                    
+                    /* Light theme support for Gradio's theme toggle */
+                    body:not(.dark) .logo-container img.light-logo {{ display: block; }}
+                    body:not(.dark) .logo-container img.dark-logo {{ display: none; }}
+                    
+                    /* Logo sizing - smaller size */
+                    .logo-container img {{
+                        max-width: 80px;
+                        height: auto;
+                        margin: 0 auto 15px auto;
+                    }}
+                </style>
                 
-                This demo showcases the Computer-Use Agent (CUA) provider in ai-gradio.
-                It creates a virtual macOS environment that the AI can fully control.
-                
-                ## Features
-                - Run in isolated VM for security
-                - Control applications like browsers, VS Code, Terminal
-                - Take screenshots
-                - Perform complex workflows
-                
-                ## Requirements
-                - Mac with Apple Silicon (M1/M2/M3/M4)
-                - macOS 14 (Sonoma) or newer
-                - API key for OpenAI or Anthropic
-                
-                ## Try these examples:
-                - "Search for a repository named trycua/cua on GitHub"
-                - "Open VS Code and create a new Python file"
-                - "Open Safari and go to apple.com"
-                - "Take a screenshot of the desktop"
+                <div class="logo-container" style="text-align: center;">
+                    <img src="{logo_black}" alt="CUA Logo" class="light-logo" />
+                    <img src="{logo_white}" alt="CUA Logo" class="dark-logo" />
+                </div>
                 """)
+                
+                # Add installation prerequisites at the top as a collapsible section
+                with gr.Accordion("Prerequisites & Installation", open=False):
+                    gr.Markdown("""
+                    ## Prerequisites
+                    
+                    Before using the Computer-Use Agent, you need to set up the Lume daemon and pull the macOS VM image.
+                    
+                    ### 1. Install Lume daemon
+                    
+                    While a lume binary is included with Computer, we recommend installing the standalone version with brew, and starting the lume daemon service:
+                    
+                    ```bash
+                    sudo /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
+                    ```
+                    
+                    ### 2. Start the Lume daemon service
+                    
+                    In a separate terminal:
+                    
+                    ```bash
+                    lume serve
+                    ```
+                    
+                    ### 3. Pull the pre-built macOS image
+                    
+                    ```bash
+                    lume pull macos-sequoia-cua:latest --no-cache
+                    ```
+                    
+                    Initial download requires 80GB storage, but reduces to ~30GB after first run due to macOS's sparse file system.
+                    
+                    VMs are stored in `~/.lume`, and locally cached images are stored in `~/.lume/cache`.
+                    
+                    ### 4. Test the sandbox
+                    
+                    ```bash
+                    lume run macos-sequoia-cua:latest
+                    ```
+                    
+                    For more detailed instructions, visit the [CUA GitHub repository](https://github.com/trycua/cua).
+                    """)
                 
                 # Prepare model choices based on available API keys
                 openai_models = []
@@ -590,7 +735,7 @@ def create_advanced_demo():
                         "OMNI: Claude 3.5 Sonnet (20240620)"
                     ]
                 
-                # Configuration options - no accordion, with Agent Loop first
+                # Configuration options
                 agent_loop = gr.Dropdown(
                     choices=["OPENAI", "ANTHROPIC", "OMNI"],
                     label="Agent Loop",
@@ -639,6 +784,7 @@ def create_advanced_demo():
                     info="Number of most recent images to keep in context"
                 )
                 
+            # Right column for chat interface
             with gr.Column(scale=2):
                 # Map the UI selection to the actual model and loop provider
                 def get_model_and_loop(choice, loop_override=None):
@@ -689,6 +835,7 @@ def create_advanced_demo():
                     
                     # Create a wrapper that handles the async generator
                     async def wrapper_fn(message, history):
+                        """Streaming wrapper that accumulates agent responses"""
                         # Get the CUA registry function
                         from ai_gradio.providers.cua_gradio import get_fn, get_interface_args
                         
@@ -700,141 +847,97 @@ def create_advanced_demo():
                             api_key = os.environ.get("ANTHROPIC_API_KEY")
                             if not api_key:
                                 yield {"role": "assistant", "content": "ANTHROPIC_API_KEY environment variable is not set."}
-                                return  # End the generator without a value
+                                return
                         else:
                             api_key = os.environ.get("OPENAI_API_KEY")
                             if not api_key:
                                 yield {"role": "assistant", "content": "OPENAI_API_KEY environment variable is not set."}
-                                return  # End the generator without a value
+                                return
                         
                         # Create the async generator
                         pipeline = "cua"
                         preprocess, postprocess = get_interface_args(pipeline)
                         
-                        # Generate a session ID only once for this interface instance
+                        # Generate a session ID
                         session_id_for_interface = str(uuid.uuid4())
                         
-                        # Create the async generator with get_fn
-                        generator = get_fn(
-                            model_name, 
-                            preprocess, 
-                            postprocess, 
-                            api_key,
-                            save_trajectory=save_trajectory,
-                            only_n_most_recent_images=recent_images,
-                            session_id=session_id_for_interface,  # Use the fixed session ID
-                            loop_provider=loop_provider
-                        )
+                        # Tracking accumulated content
+                        accumulated_content = ""
+                        last_content = ""
+                        has_real_content = False
                         
-                        # Use Gradio's streaming API by yielding each response
-                        # This is the critical part for showing streaming in the UI
-                        first_response = True
-                        
-                        # Keep track of all responses and a running transcript
-                        all_responses = []
-                        current_transcript = ""
-                        actions_seen = set()  # Track actions we've already seen by ID
-                        
-                        # Initialize with starting message
-                        yield {"role": "assistant", "content": "Starting your task..."}
-                        
-                        # Debug counter for tracking messages
-                        message_counter = 0
-                        
-                        async for response in generator(message, history):
-                            # Print for debugging
-                            print(f"DEBUG: Received response #{message_counter}: {response.keys()}")
-                            message_counter += 1
+                        # Initialize the agent
+                        try:
+                            print(f"DEBUG: Creating agent with model={model_name}, loop={loop_provider}")
+                            agent_fn = get_fn(
+                                model_name, 
+                                preprocess, 
+                                postprocess, 
+                                api_key,
+                                save_trajectory=save_trajectory,
+                                only_n_most_recent_images=recent_images,
+                                session_id=session_id_for_interface,
+                                loop_provider=loop_provider
+                            )
                             
-                            # Remember all responses received
-                            all_responses.append(response)
+                            print(f"DEBUG: Initializing agent task with message: {message}")
+                            # First message - only show minimal message
+                            yield {"role": "assistant", "content": "Starting task..."}
                             
-                            # Extract action details to build a running transcript
-                            new_content_added = False
-                            
-                            # Check if response has 'output' directly
-                            outputs = response.get("output", [])
-                            if not outputs and "metadata" in response:
-                                # For processed responses that put output in metadata
-                                metadata = response.get("metadata", {})
-                                print(f"DEBUG: Found metadata: {metadata.keys() if metadata else 'none'}")
-                                if "subtitle" in metadata:
-                                    # Extract content from subtitle which contains processed output
-                                    current_transcript = metadata["subtitle"]
-                                    new_content_added = True
-                            else:
-                                # Process raw output directly
-                                for output in outputs:
-                                    # Only process each output once based on its ID
-                                    output_id = output.get("id", "")
-                                    if output_id in actions_seen:
-                                        continue
-                                    
-                                    print(f"DEBUG: Processing new output: {output.get('type')}")
-                                    actions_seen.add(output_id)
-                                    
-                                    if output.get("type") == "computer_call":
-                                        action = output.get("action", {})
-                                        action_type = action.get("type", "unknown")
-                                        status = output.get("status", "")
+                            # Stream responses from the agent, accumulating content
+                            async for response in agent_fn(message, history):
+                                print(f"DEBUG: Got response: {response}")
+                                
+                                # Get the content from this response
+                                current_content = response.get("content", "")
+                                
+                                # Skip empty or initial messages
+                                if not current_content or current_content == "Starting task...":
+                                    continue
+                                
+                                # Check if this is new content
+                                if current_content != last_content and current_content.strip():
+                                    # Only add if it's not already in accumulated content
+                                    if current_content not in accumulated_content:
+                                        # Add a separator if we already have content
+                                        if accumulated_content:
+                                            accumulated_content += "\n\n"
+                                        accumulated_content += current_content
                                         
-                                        # Create message for this action
-                                        action_msg = ""
-                                        if action_type == "click":
-                                            button = action.get("button", "")
-                                            x = action.get("x", "")
-                                            y = action.get("y", "")
-                                            action_msg = f"• Clicked {button} at ({x}, {y}) - {status}\n"
-                                        elif action_type == "type":
-                                            text = action.get("text", "")
-                                            action_msg = f"• Typed: \"{text}\" - {status}\n"
-                                        elif action_type == "keypress":
-                                            key = action.get("key", "")
-                                            action_msg = f"• Pressed key: {key} - {status}\n"
-                                        else:
-                                            action_msg = f"• {action_type.capitalize()} action - {status}\n"
-                                        
-                                        current_transcript += action_msg
-                                        new_content_added = True
-                                    
-                                    elif output.get("type") == "reasoning" and "summary" in output and output["summary"]:
-                                        for summary_item in output["summary"]:
-                                            if isinstance(summary_item, dict) and summary_item.get("text"):
-                                                current_transcript += f"• {summary_item['text']}\n"
-                                                new_content_added = True
+                                    last_content = current_content
+                                    has_real_content = True
+                                
+                                # Yield the accumulated content with the original metadata
+                                # This will completely replace the "Starting task..." message
+                                if has_real_content:
+                                    yield {
+                                        "role": "assistant",
+                                        "content": accumulated_content,
+                                        "metadata": response.get("metadata", {})
+                                    }
                             
-                            # Get any text content from the response itself
-                            resp_content = response.get("content", "")
-                            if resp_content and resp_content != "Working on task..." and "Working on your task" not in resp_content:
-                                # If there's meaningful text in the response itself, add it
-                                current_transcript += f"\n{resp_content}\n"
-                                new_content_added = True
-                            
-                            # Update the UI with the current transcript if anything was added
-                            if new_content_added:
-                                print(f"DEBUG: Updating UI with new content (transcript length: {len(current_transcript)})")
+                            # Only show completion message if we have no meaningful content
+                            if not has_real_content:
                                 yield {
                                     "role": "assistant", 
-                                    "content": current_transcript
+                                    "content": "Task completed."
                                 }
                                 
-                        # Final response - always provide a summary
-                        if current_transcript:
-                            yield {
-                                "role": "assistant",
-                                "content": "✅ Task completed!\n\n" + current_transcript
-                            }
+                        except Exception as e:
+                            import traceback
+                            traceback.print_exc()
+                            error_msg = f"Error: {str(e)}"
+                            yield {"role": "assistant", "content": error_msg}
                     
                     # Create the interface with the wrapped function
                     return gr.ChatInterface(
                         fn=wrapper_fn,
-                        description="Ask me to perform tasks in a virtual computer environment.",
+                        description='Ask me to perform tasks in a virtual macOS environment.<br>Built with <a href="https://github.com/trycua/cua" target="_blank">github.com/trycua/cua</a>.',
                         examples=[
-                            "Open Safari and go to helloworld.ai",
-                            "Search GitHub for trycua/cua and open the first result", 
-                            "Take a screenshot of the desktop",
-                            "Open Visual Studio Code",
-                            "Open a terminal and run ls -la"
+                            "Create a Python virtual environment, install pandas and matplotlib, then plot stock data",
+                            "Open a PDF in Preview, add annotations, and save it as a compressed version",
+                            "Open Safari, search for 'macOS automation tools', and save the first three results as bookmarks",
+                            "Configure SSH keys and set up a connection to a remote server"
                         ]
                     )
                 

@@ -70,8 +70,7 @@ browser = [
 ]
 cua = [
     "cua-computer>=0.1.0",
-    "cua-agent[all]>=0.1.0",
-    "pydantic>=2.0.0,<3.0.0"
+    "cua-agent[all]>=0.1.0"
 ]
 swarms = [
     "swarms>=6.8.9,<7.0.0",
