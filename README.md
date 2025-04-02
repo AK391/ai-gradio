@@ -64,6 +64,7 @@ pip install 'ai-gradio[fireworks]'  # Fireworks support
 pip install 'ai-gradio[together]'   # Together support
 pip install 'ai-gradio[qwen]'       # Qwen support
 pip install 'ai-gradio[browser]'    # Browser support
+pip install 'ai-gradio[cua]'        # Computer-Use support
 ```
 
 ## Usage
