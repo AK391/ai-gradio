@@ -73,7 +73,8 @@ class RealtimeHandler(StreamHandler):
         expected_layout="mono",
         output_sample_rate=SAMPLE_RATE,
         output_frame_size=480,
-        model=None
+        model=None,
+        bill_to: str | None = None
     ) -> None:
         super().__init__(
             expected_layout,
@@ -82,6 +83,7 @@ class RealtimeHandler(StreamHandler):
             input_sample_rate=SAMPLE_RATE,
         )
         self.model = model
+        self.bill_to = bill_to
         # Initialize Event objects first
         self.args_set = Event()
         self.quit = Event()
@@ -103,13 +105,15 @@ class RealtimeHandler(StreamHandler):
             expected_layout=self.expected_layout,
             output_sample_rate=self.output_sample_rate,
             output_frame_size=self.output_frame_size,
-            model=self.model
+            model=self.model,
+            bill_to=self.bill_to
         )
 
     def _initialize_connection(self, api_key: str):
         self.client = InferenceClient(
             provider="together",
-            api_key=api_key
+            api_key=api_key,
+            bill_to=self.bill_to
         )
         with self.client.beta.realtime.connect(
             model=self.model
@@ -196,11 +200,12 @@ def update_chatbot(chatbot: list[dict], response):
     chatbot.append({"role": "assistant", "content": response.transcript})
     return chatbot
 
-def get_fn(api_key: str, model: str, provider: str = "together"):
+def get_fn(api_key: str, model: str, provider: str = "together", bill_to: str | None = None):
     def chat_fn(message, history):
         client = InferenceClient(
             provider=provider,
-            api_key=api_key
+            api_key=api_key,
+            bill_to=bill_to
         )
         messages = []
         for user_msg, assistant_msg in history:
@@ -231,7 +236,7 @@ def demo_card_click(evt: gr.EventData):
     index = evt._data['component']['index']
     return DEMO_LIST[index]['description']
 
-def registry(name: str, token: str | None = None, twilio_sid: str | None = None, twilio_token: str | None = None, enable_voice: bool = False, coder: bool = False, provider: str = "together", **kwargs):
+def registry(name: str, token: str | None = None, twilio_sid: str | None = None, twilio_token: str | None = None, enable_voice: bool = False, coder: bool = False, provider: str = "together", bill_to: str | None = None, **kwargs):
     api_key = token or os.environ.get("HF_TOKEN")
     if not api_key:
         raise ValueError("HF_TOKEN environment variable is not set.")
@@ -462,7 +467,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
             
             btn.click(
                 generate_code,
-                inputs=[input, image_input, setting, history, model_name, provider_state],  # Use provider_state instead of provider string
+                inputs=[input, image_input, setting, history, model_name, provider_state, bill_to],
                 outputs=[code_output, history, preview, state_tab, code_drawer]
             )
             
@@ -497,7 +502,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
                 )
                     
                 webrtc.stream(
-                    RealtimeHandler(model=model),
+                    RealtimeHandler(model=model, bill_to=bill_to),
                     inputs=[webrtc, api_key_input],
                     outputs=[webrtc],
                     time_limit=90,
@@ -512,7 +517,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
     else:
         # New chat interface implementation
         interface = gr.ChatInterface(
-            fn=get_fn(api_key, model, provider),
+            fn=get_fn(api_key, model, provider, bill_to),
             **kwargs
         )
 
@@ -543,7 +548,7 @@ def send_to_preview(code):
     data_uri = f"data:text/html;charset=utf-8;base64,{encoded_html}"
     return f'<iframe src="{data_uri}" width="100%" height="920px"></iframe>'
 
-def generate_code(query, image, setting, history, model, provider: str = "together"):
+def generate_code(query, image, setting, history, model, provider: str = "together", bill_to: str | None = None):
     # Get api_key from environment
     api_key = os.environ.get("HF_TOKEN")
     if not api_key:
@@ -551,7 +556,8 @@ def generate_code(query, image, setting, history, model, provider: str = "togeth
         
     client = InferenceClient(
         provider=provider,
-        api_key=api_key
+        api_key=api_key,
+        bill_to=bill_to
     )
     messages = []
     messages.append({
