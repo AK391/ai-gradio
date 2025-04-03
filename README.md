@@ -13,6 +13,7 @@ A Python package that makes it easy for developers to create machine learning ap
 - **Multi-Modal**: Support for text, image, and video inputs
 - **Agent Teams**: CrewAI integration for collaborative AI tasks
 - **Browser Automation**: AI agents that can perform web-based tasks
+- **Computer-Use**: AI agents that can control a virtual local macOS/Linux environment
 
 ### Model Support
 
@@ -32,6 +33,7 @@ A Python package that makes it easy for developers to create machine learning ap
 | CrewAI | Agent Teams | Support Team, Article Team |
 | Qwen | Language | qwen-turbo, qwen-plus, qwen-max |
 | Browser | Automation | browser-use-agent |
+| Cua | Computer-Use | OpenAI Computer-Use Preview |
 
 ## Installation
 
@@ -203,6 +205,49 @@ Example tasks:
 - Weather lookups
 - Product price comparisons
 - News searches
+
+#### Computer-Use Agent
+
+```bash
+# Install Computer-Use Agent support
+pip install 'ai-gradio[cua]'
+
+# Install Lume daemon (macOS only)
+sudo /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/trycua/cua/main/libs/lume/scripts/install.sh)"
+
+# Start the Lume daemon service (in a separate terminal)
+lume serve
+
+# Pull the pre-built macOS image
+lume pull macos-sequoia-cua:latest --no-cache
+```
+
+Requires macOS with Apple Silicon (M1/M2/M3/M4) and macOS 14 (Sonoma) or newer.
+
+```python
+import gradio as gr
+import ai_gradio
+from dotenv import load_dotenv
+
+# Load API keys from .env file
+load_dotenv()
+
+# Create a computer-use automation interface with OpenAI
+gr.load(
+    name='cua:gpt-4-turbo',  # Format: 'cua:model_name'
+    src=ai_gradio.registry,
+    title='Computer-Use Agent',
+    description='AI that can control a virtual macOS environment'
+).launch()
+```
+
+Example tasks:
+- Create Python virtual environments and run data analysis scripts
+- Open PDFs in Preview, add annotations, and save compressed versions
+- Browse Safari and manage bookmarks
+- Clone and build GitHub repositories
+- Configure SSH keys and remote connections
+- Create automation scripts and schedule them with cron
 
 #### Swarms Integration
 ```python
