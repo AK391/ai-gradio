@@ -584,6 +584,8 @@ try:
     from .huggingface_gradio import registry as huggingface_registry
     registry.update({f"huggingface:{k}": huggingface_registry for k in [
         # Text Generation Models
+        "meta-llama/Llama-4-Scout-17B-16E-Instruct",
+        "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
         "deepseek-ai/DeepSeek-V3-0324",
         "deepseek-ai/DeepSeek-R1",
         "deepseek-ai/DeepSeek-V3",
