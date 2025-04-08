@@ -312,6 +312,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
             setting = gr.State(DEFAULT_SETTINGS)  # Use default settings
             model_name = gr.State(model)
             provider_state = gr.State(provider)  # Add provider state
+            bill_to_state = gr.State(bill_to)  # Add bill_to state
 
             with ms.Application() as app:
                 with antd.ConfigProvider():
@@ -467,7 +468,7 @@ def registry(name: str, token: str | None = None, twilio_sid: str | None = None,
             
             btn.click(
                 generate_code,
-                inputs=[input, image_input, setting, history, model_name, provider_state, bill_to],
+                inputs=[input, image_input, setting, history, model_name, provider_state, bill_to_state],
                 outputs=[code_output, history, preview, state_tab, code_drawer]
             )
             
